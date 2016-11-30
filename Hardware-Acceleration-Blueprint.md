@@ -146,7 +146,7 @@ It is noteworthy that the vRouter datapath requires no changes to
 forward packets through the SmartNIC in this manner.  A properly
 constructed fallback path uses the host operating system's or host
 dataplane's normal interface abstractions for the representative
-interfaces.  The representative interfaces look like normal 
+interfaces.  The representative interfaces look like normal
 interfaces to the vRouter datapath.
 
 ![Subsequent Packets in a Flow for VM-to-VM](./images/vtov-second-packet.png)
@@ -187,7 +187,7 @@ system.  Naturally, when transmitting a packet over a physical
 interface, the vRouter will first encapsulate the packet in a tunnel.
 Similarly, it will decapsulate packets arriving on the physical
 interface before performing the lookups, including the flow lookup, that
-direct the packet to the destination VM. 
+direct the packet to the destination VM.
 
 ![Subsequent Packets in a Flow for Net-to-VM](./images/ntov-second-packet.png)
 The general structure of the datapath offload API will be as follows.
@@ -410,4 +410,65 @@ source code.  Each offload function hook should have its own
 documentation describing its expected input parameters and return
 values.
 
+Configuring a vRouter SmartNIC would also require its own SmartNIC
+specific documentation.  This documentation would need to describe any
+compute-node configurations that must occur in order to support the
+acceleration.  The following describes the documentation additions
+required for Netronome's Agilio vRouter:
+
+
+Contrail vrouter fabric integration requires the addition of the
+env.ns_agilio_vrouter dictionary to the
+/opt/contrail/utils/fabfile/testbeds/testbed.py file to accelerate a
+compute node. Fabric integration also requires the use of the
+control_data dictionary in the testbed.py file.  The use of the bond
+dictionary in the testbed.py file is optional but is required if it is
+desired to setup a bonded interface.  An example of the control_data and
+env.ns_agilio_vrouter dictionaries are below:
+
+    # required if using env.ns_agilio_vrouter
+    control_data = {
+        ctrl_node_0 : { 'ip': '10.0.0.2/24', 'gw': '10.0.0.1', 'device':'eth1'},
+        comp_node_0 : { 'ip': '10.0.0.3/24', 'gw': '10.0.0.1', 'device':'nfp_p0'},
+        comp_node_1 : { 'ip': '10.0.0.4/24', 'gw': '10.0.0.1', 'device':'nfp_p0'},
+    }
+    
+    # Setup Netronome Agilio vRouter on specified nodes
+    env.ns_agilio_vrouter = {
+        comp_node_0: {'huge_page_alloc': '24G', 'huge_page_size': '1G',
+                      'coremask': '2,4', 'pinning_mode': 'auto:split'},
+        comp_node_1: {'huge_page_alloc': '24G', 'huge_page_size': '1G',
+                      'coremask': '2,4', 'pinning_mode': 'auto:split'}
+    }
+
+The control_data dictionary is unchanged as per normal Contrail vrouter
+usage.  Compute nodes 0 and 1 are defined to use the nfp_p0 interface.
+The env.ns_agilio_vrouter defines which node(s) should be accelerated.
+In the example above both compute nodes are to be accelerated with
+Agilio vrouter.  The dictionaries per node contain hugepage settings
+which get appied to the kernel commandline (via grub) and virtiorelayd
+settings.  Please see the virtiorelayd blueprint for additional
+information on these settings.
+
+During Contrail vrouter provisioning, the env.ns_agilio_vrouter
+dictionary is read and provisioning determines which node(s) to
+accelerate or to apply Agilio vrouter provisioning.  Agilio vrouter
+provisioning occurs after Contrail vrouter provisioning and does the
+following:
+ * checks boot parameters for various iommu command line options
+ * checks the booted kernel for ERR47 patch support
+ * checks for existing nfp_p* netdevs
+ * checks minimum running versions of various nfp programmables
+   (CPLD and cfg)
+ * updates the agent configure
+ * updates the agent param
+ * modifies the /etc/network/interfaces file to properly configure
+   the nfp_* devices (taking into account bonding information)
+ * installs additional openstack integration
+ * configures virtiorelayd
+ * configures the kernel commandline
+ * enables virtiorelayd
+
 #11. References
+
+[Netronome Agilo SmartNICs](https://www.netronome.com/products/agilio-cx/)
